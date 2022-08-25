@@ -1,13 +1,134 @@
 <!DOCTYPE html>
+<html>
 <head>
-    <style>
-        label{
-            font-size: 20px;
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>body {font:100%/1.5 Arial}button,select{font:inherit}output{color:#888}</style>
 </head>
 <body>
-    <label>🔇off</label>
-    <script src="./TinyMusic.min.js"></script>
-    <script src="./music.js"></script>
+<h1>Song Player Demo</h1>
+<p>Select a song and click play:</p>
+<fieldset id="player">
+  <legend>Select a song</legend>
+  <label>Song:
+    <select id="song">
+      <option value="sanxion">Sanxion</option>
+      <option value="cuddly">Cuddly Demos (Main menu)</option>
+      <option value="iamback">I am back</option>
+      <option value="depp">Depp</option>
+    </select>
+  </label>
+  <button id="playBtn">Play</button>
+  <button id="stopBtn">Stop</button>
+  <output id="songStatus"></output>
+</fieldset>
+
+<script src="./zzfx.min.js"></script>
+<script src="./zzfxm.min.js"></script>
+
+<script type="module">
+
+  let buffer;
+  let node;
+
+  // Loads a song
+  const load = async name => {
+    const res = await fetch(`./songs/${name}.js`);
+    const src = await res.text();
+    return parse(src);
+  }
+
+  // As we're downloading the song as a string, we need to convert it to JSON
+  // before we can play it.
+  //
+  // This step isn't required when embedding a song directly into your
+  // production.
+  const parse = str => {
+    str = str.replace(/\[,/g,'[null,')
+      .replace(/,,\]/g,',null]')
+      .replace(/,\s*(?=[,\]])/g,',null')
+      .replace(/([\[,]-?)(?=\.)/g,'$10')
+      .replace(/-\./g,'-0.');
+
+    return JSON.parse(str, (key, value) => {
+      if (value === null) {
+        return undefined;
+      }
+      return value;
+    });
+  };
+
+
+  // Renders the song. ZzFXM blocks the main thread so defer execution for a few
+  // ms so that any status message change can be repainted.
+  const render = song => {
+    return new Promise(resolve => {
+      setTimeout(() => resolve(zzfxM(...song)), 50);
+    });
+  }
+
+  // Sets the current song to the value selected in the UI
+  const setSong = async () => {
+
+    const isPlaying = !!node;
+
+    songPlayerElem.disabled = true;
+
+    if (isPlaying) {
+      await stop();
+    }
+
+    songStatusElem.textContent = 'Loading...';
+    const song = await load(songSelectElem.value);
+
+    songStatusElem.textContent = 'Rendering...';
+    buffer = await render(song);
+
+    if (isPlaying) {
+      await play();
+    } else {
+      songStatusElem.textContent = 'Ready.';
+    }
+    songPlayerElem.disabled = false;
+  }
+
+  // Play the tune
+  const play = async () => {
+    if (node) {
+      return;
+    }
+    node = zzfxP(...buffer);
+    node.loop = true;
+    await zzfxX.resume();
+    songStatusElem.textContent = 'Playing...';
+  }
+
+  // Stop playing the tune
+  const stop = async () => {
+    if (!node) {
+      return
+    }
+    await zzfxX.suspend();
+    node.stop();
+    node.disconnect();
+    node = null;
+    songStatusElem.textContent = 'Stopped.';
+  }
+
+  const songPlayerElem = document.getElementById('player');
+  const songSelectElem = document.getElementById('song');
+  const songPlayElem = document.getElementById('playBtn');
+  const songStopElem = document.getElementById('stopBtn');
+  const songStatusElem = document.getElementById('songStatus');
+
+  songPlayElem.addEventListener('click', play);
+  songStopElem.addEventListener('click', stop);
+  songSelectElem.addEventListener('change', setSong);
+
+  // This reduces CPU usage when a song isn't playing
+  zzfxX.suspend();
+  stop();
+  setSong();
+</script>
 </body>
+</html>
